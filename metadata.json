@@ -1,0 +1,5 @@
+{
+  "name": "OSIS E-Voting Platform",
+  "description": "A secure and modern e-voting platform for OSIS elections at SMK LPPMRI 2 KEDUNGREJA. This application features a user-friendly voting interface, a comprehensive admin CMS for managing elections and candidates, a voter code generator with status tracking, and a beautiful dark/light mode theme.",
+  "requestFramePermissions": []
+}
