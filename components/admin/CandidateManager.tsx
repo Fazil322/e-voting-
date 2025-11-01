@@ -70,8 +70,7 @@ const CandidateManager: React.FC = () => {
                 await updateCandidate(candidateData as Candidate);
                 showToast('Kandidat berhasil diperbarui.', 'success');
             } else {
-                const newCandidate: Candidate = {
-                    id: `candidate-${Date.now()}`,
+                const newCandidate: Partial<Candidate> = {
                     electionId: selectedElectionId,
                     name: currentCandidate.name || '',
                     vision: currentCandidate.vision || '',
@@ -179,7 +178,7 @@ const CandidateManager: React.FC = () => {
                         <div className="flex justify-end gap-2 pt-4">
                             <button onClick={closeModal} disabled={isSaving} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors disabled:opacity-50">Batal</button>
                             <button onClick={handleSave} disabled={isSaving} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-400 disabled:cursor-wait">
-                                {isSaving ? 'Menyimpan...' : 'Simpan'}
+                                {isSaving ? (photoFile ? 'Mengunggah foto...' : 'Menyimpan...') : 'Simpan'}
                             </button>
                         </div>
                     </div>

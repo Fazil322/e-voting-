@@ -76,7 +76,10 @@ const PublicResults: React.FC = () => {
                             <div className="flex justify-between mb-1 items-center">
                                 <div className="flex items-center gap-3">
                                     <img src={result.photoUrl} alt={result.name} className="w-10 h-10 rounded-full object-cover"/>
-                                    <span className="text-base font-medium text-gray-700 dark:text-white">{result.name}</span>
+                                    <span className="text-base font-medium text-gray-700 dark:text-white flex items-center gap-2">
+                                        {result.name}
+                                        {resultsData.winner.some(w => w.id === result.id) && '🏆'}
+                                    </span>
                                 </div>
                                 <span className="text-sm font-medium text-gray-700 dark:text-white">{result.voteCount} Suara ({result.percentage.toFixed(1)}%)</span>
                             </div>

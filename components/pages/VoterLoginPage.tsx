@@ -12,7 +12,7 @@ const VoterLoginPage: React.FC = () => {
     e.preventDefault();
     setError('');
     setIsLoading(true);
-    const success = await loginVoter(code);
+    const success = await loginVoter(code.toUpperCase());
     if (!success) {
       setError('Kode voting tidak valid atau sudah digunakan.');
     }
@@ -39,6 +39,7 @@ const VoterLoginPage: React.FC = () => {
                 id="voter-code"
                 name="code"
                 type="text"
+                autoCapitalize="characters"
                 required
                 disabled={isLoading}
                 className="appearance-none rounded-md relative block w-full px-3 py-3 border border-gray-300 dark:border-gray-600 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-white bg-white dark:bg-gray-700 focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm disabled:opacity-50"

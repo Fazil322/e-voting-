@@ -23,10 +23,14 @@ const App: React.FC = () => {
   }, [theme]);
 
   useEffect(() => {
-    // On initial load, check for the admin hash to route to the admin login page
-    if (window.location.hash === '#admin') {
-      setCurrentView('adminLogin');
-    }
+    const handleRouting = () => {
+      if (window.location.hash === '#admin') {
+        setCurrentView('adminLogin');
+      }
+    };
+    handleRouting();
+    window.addEventListener('hashchange', handleRouting);
+    return () => window.removeEventListener('hashchange', handleRouting);
   }, [setCurrentView]);
 
   if (isLoading) {

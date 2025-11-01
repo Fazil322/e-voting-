@@ -9,7 +9,7 @@ const ThankYouPage: React.FC = () => {
     const activeElection = useMemo(() => elections.find(e => e.isActive), [elections]);
 
     const resultsData = useMemo(() => {
-        if (!activeElection) return { results: [], totalVotes: 0 };
+        if (!activeElection) return { results: [], totalVotes: 0, winner: [] };
 
         const electionVotes = votes.filter(v => v.electionId === activeElection.id);
         const electionCandidates = candidates.filter(c => c.electionId === activeElection.id);
@@ -25,8 +25,14 @@ const ThankYouPage: React.FC = () => {
             ...res,
             percentage: totalVotes > 0 ? (res.voteCount / totalVotes) * 100 : 0,
         })).sort((a, b) => b.voteCount - a.voteCount);
+        
+        let winner = [];
+        if (resultsWithPercentage.length > 0 && resultsWithPercentage[0].voteCount > 0) {
+            const topScore = resultsWithPercentage[0].voteCount;
+            winner = resultsWithPercentage.filter(r => r.voteCount === topScore);
+        }
 
-        return { results: resultsWithPercentage, totalVotes };
+        return { results: resultsWithPercentage, totalVotes, winner };
     }, [activeElection, votes, candidates]);
 
     return (
@@ -57,12 +63,15 @@ const ThankYouPage: React.FC = () => {
                         {resultsData.results.map((result) => (
                             <div key={result.id}>
                                 <div className="flex justify-between mb-1">
-                                    <span className="text-base font-medium text-gray-700 dark:text-white">{result.name}</span>
+                                    <span className="text-base font-medium text-gray-700 dark:text-white flex items-center gap-2">
+                                        {result.name}
+                                        {resultsData.winner.some(w => w.id === result.id) && '🏆'}
+                                    </span>
                                     <span className="text-sm font-medium text-gray-700 dark:text-white">{result.voteCount} Suara ({result.percentage.toFixed(1)}%)</span>
                                 </div>
                                 <div className="w-full bg-gray-200 rounded-full h-4 dark:bg-gray-600">
                                     <div 
-                                        className="bg-blue-500 h-4 rounded-full transition-all duration-500 ease-out"
+                                        className={`${resultsData.winner.some(w => w.id === result.id) ? 'bg-green-500' : 'bg-blue-500'} h-4 rounded-full transition-all duration-500 ease-out`}
                                         style={{ width: `${result.percentage}%` }}
                                     ></div>
                                 </div>

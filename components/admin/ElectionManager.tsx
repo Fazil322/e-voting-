@@ -40,9 +40,8 @@ const ElectionManager: React.FC = () => {
                 }
                 showToast('Pemilihan berhasil diperbarui.', 'success');
             } else {
-                const newElection = { ...currentElection, id: `election-${Date.now()}` } as Election;
-                await addElection(newElection);
-                 if (newElection.isActive) {
+                const newElection = await addElection(currentElection);
+                 if (newElection && newElection.isActive) {
                     await setActiveElection(newElection);
                 }
                 showToast('Pemilihan berhasil ditambahkan.', 'success');
@@ -154,8 +153,8 @@ const ElectionManager: React.FC = () => {
                 <Modal title="Konfirmasi Hapus" onClose={() => setElectionToDelete(null)}>
                     <div>
                         <p>Apakah Anda yakin ingin menghapus pemilihan
-                            <span className="font-bold"> "{electionToDelete.title}"</span>?
-                            Aksi ini tidak dapat dibatalkan.
+                            <span className="font-bold"> "{electionToDelete.title}"</span>? 
+                            Semua kandidat dan suara yang terkait juga akan dihapus. Aksi ini tidak dapat dibatalkan.
                         </p>
                         <div className="mt-6 flex justify-end gap-4">
                             <button onClick={() => setElectionToDelete(null)} className="px-4 py-2 bg-gray-300 dark:bg-gray-600 rounded-md hover:bg-gray-400">Batal</button>

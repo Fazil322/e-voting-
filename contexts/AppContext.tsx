@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { Election, Candidate, Vote, Toast } from '../types';
 import { ADMIN_CODE } from '../constants';
 import { supabase } from '../utils/supabaseClient';
@@ -9,12 +9,16 @@ import {
 
 type Theme = 'light' | 'dark';
 
+export interface VoterCode {
+    code: string;
+    is_used: boolean;
+}
+
 interface AppContextType {
   elections: Election[];
   candidates: Candidate[];
-  voterCodes: string[];
-  usedVoterCodes: string[];
   votes: Vote[];
+  codeStats: { total: number; used: number; };
   isAdminAuthenticated: boolean;
   isVoterAuthenticated: boolean;
   currentVoterCode: string | null;
@@ -30,16 +34,17 @@ interface AppContextType {
   toast: Toast | null;
   showToast: (message: string, type: Toast['type']) => void;
   isLoading: boolean;
-  addElection: (election: Partial<Election>) => Promise<void>;
+  addElection: (election: Partial<Election>) => Promise<Election>;
   updateElection: (election: Election) => Promise<void>;
   deleteElection: (id: string) => Promise<void>;
   setActiveElection: (election: Election) => Promise<void>;
-  addCandidate: (candidate: Partial<Candidate>) => Promise<void>;
+  addCandidate: (candidate: Partial<Candidate>) => Promise<Candidate>;
   updateCandidate: (candidate: Candidate) => Promise<void>;
   deleteCandidate: (id: string) => Promise<void>;
   generateAndSaveCodes: (count: number) => Promise<void>;
   clearAllCodes: () => Promise<void>;
   uploadCandidatePhoto: (file: File) => Promise<string>;
+  fetchCodesPage: (page: number, searchTerm: string) => Promise<{ codes: VoterCode[], count: number }>;
 }
 
 export const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -48,9 +53,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [elections, setElections] = useState<Election[]>([]);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
-  const [voterCodes, setVoterCodes] = useState<string[]>([]);
-  const [usedVoterCodes, setUsedVoterCodes] = useState<string[]>([]);
   const [votes, setVotes] = useState<Vote[]>([]);
+  const [codeStats, setCodeStats] = useState({ total: 0, used: 0 });
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(false);
   const [isVoterAuthenticated, setIsVoterAuthenticated] = useState<boolean>(false);
   const [currentVoterCode, setCurrentVoterCode] = useState<string | null>(null);
@@ -67,15 +71,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setToast(currentToast => (currentToast?.id === newToast.id ? null : currentToast));
     }, 3000);
   };
+  
+  const fetchCodeStats = useCallback(async () => {
+    const { count: totalCount, error: totalError } = await supabase.from('voter_codes').select('*', { count: 'exact', head: true });
+    if (totalError) throw totalError;
+
+    const { count: usedCount, error: usedError } = await supabase.from('voter_codes').select('*', { count: 'exact', head: true }).eq('is_used', true);
+    if (usedError) throw usedError;
+    
+    setCodeStats({ total: totalCount ?? 0, used: usedCount ?? 0 });
+  }, []);
 
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchInitialData = async () => {
         setIsLoading(true);
         try {
-            const [electionsRes, candidatesRes, codesRes, votesRes] = await Promise.all([
+            const [electionsRes, candidatesRes, votesRes] = await Promise.all([
                 supabase.from('elections').select('*'),
                 supabase.from('candidates').select('*'),
-                supabase.from('voter_codes').select('code, is_used'),
                 supabase.from('votes').select('*')
             ]);
 
@@ -84,13 +97,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
             if (candidatesRes.error) throw candidatesRes.error;
             setCandidates(candidatesRes.data.map(mapCandidateFromDb));
-
-            if (codesRes.error) throw codesRes.error;
-            setVoterCodes(codesRes.data.map((vc: any) => vc.code));
-            setUsedVoterCodes(codesRes.data.filter((vc: any) => vc.is_used).map((vc: any) => vc.code));
-
+            
             if (votesRes.error) throw votesRes.error;
             setVotes(votesRes.data.map(mapVoteFromDb));
+
+            await fetchCodeStats();
             
         } catch (error) {
             console.error("Error fetching data:", error);
@@ -99,21 +110,40 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             setIsLoading(false);
         }
     };
-    fetchData();
+    fetchInitialData();
 
-    const channel = supabase
+    const votesChannel = supabase
       .channel('realtime-votes')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'votes' }, (payload) => {
         const newVote = mapVoteFromDb(payload.new);
         setVotes(prev => prev.some(v => v.id === newVote.id) ? prev : [...prev, newVote]);
-        setUsedVoterCodes(prev => prev.includes(newVote.voterCode) ? prev : [...prev, newVote.voterCode]);
+        fetchCodeStats();
+      })
+      .subscribe();
+      
+    const electionsChannel = supabase
+      .channel('realtime-elections')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'elections' }, async () => {
+          const { data, error } = await supabase.from('elections').select('*');
+          if (!error) setElections(data.map(mapElectionFromDb));
       })
       .subscribe();
 
+    const candidatesChannel = supabase
+      .channel('realtime-candidates')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'candidates' }, async () => {
+          const { data, error } = await supabase.from('candidates').select('*');
+          if (!error) setCandidates(data.map(mapCandidateFromDb));
+      })
+      .subscribe();
+
+
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(votesChannel);
+      supabase.removeChannel(electionsChannel);
+      supabase.removeChannel(candidatesChannel);
     };
-  }, []);
+  }, [fetchCodeStats]);
 
   const toggleTheme = () => setTheme(prevTheme => prevTheme === 'light' ? 'dark' : 'light');
 
@@ -169,59 +199,90 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     if (insertError) {
         showToast('Gagal menyimpan suara Anda. Hubungi admin.', 'error');
-        await supabase.from('voter_codes').update({ is_used: false }).eq('code', currentVoterCode); // Revert
+        // Revert voter code status if vote insertion fails
+        await supabase.from('voter_codes').update({ is_used: false }).eq('code', currentVoterCode);
         return;
     }
     
     setCurrentView('votingFinished');
-    // No need for client-side state update here, realtime subscription will handle it.
   };
 
-  const addElection = async (election: Partial<Election>) => {
-    const { data, error } = await supabase.from('elections').insert(mapElectionToDb(election)).select().single();
+  const addElection = async (election: Partial<Election>): Promise<Election> => {
+    const dbPayload = mapElectionToDb(election);
+    delete dbPayload.id;
+    const { data, error } = await supabase.from('elections').insert(dbPayload).select().single();
     if (error) throw error;
-    setElections(prev => [...prev, mapElectionFromDb(data)]);
+    return mapElectionFromDb(data);
   };
 
   const updateElection = async (election: Election) => {
-    const { data, error } = await supabase.from('elections').update(mapElectionToDb(election)).eq('id', election.id).select().single();
+    const { error } = await supabase.from('elections').update(mapElectionToDb(election)).eq('id', election.id);
     if (error) throw error;
-    setElections(prev => prev.map(e => e.id === election.id ? mapElectionFromDb(data) : e));
   };
   
   const deleteElection = async (id: string) => {
+    // Supabase REST doesn't support cascade deletes, so we do it manually.
+    // In a real project, this should be an RPC function (Edge Function) for atomicity.
+    await supabase.from('votes').delete().eq('election_id', id);
+    await supabase.from('candidates').delete().eq('election_id', id);
     const { error } = await supabase.from('elections').delete().eq('id', id);
     if (error) throw error;
-    setElections(prev => prev.filter(e => e.id !== id));
   };
 
   const setActiveElection = async (electionToToggle: Election) => {
-    await supabase.from('elections').update({ is_active: false }).neq('id', electionToToggle.id);
-    await supabase.from('elections').update({ is_active: true }).eq('id', electionToToggle.id);
-    setElections(prev => prev.map(e => ({...e, isActive: e.id === electionToToggle.id })));
+    const { error: batchError } = await supabase.rpc('set_active_election', {
+      election_id_to_set: electionToToggle.id
+    });
+    // This requires a stored procedure in Supabase. A simpler client-side alternative:
+    // await supabase.from('elections').update({ is_active: false }).neq('id', electionToToggle.id);
+    // await supabase.from('elections').update({ is_active: true }).eq('id', electionToToggle.id);
+    // For simplicity and to avoid requiring DB changes, we'll do two queries.
+    
+    const { error: deactivateError } = await supabase.from('elections').update({ is_active: false }).neq('id', electionToToggle.id);
+    if (deactivateError) throw deactivateError;
+    const { error: activateError } = await supabase.from('elections').update({ is_active: true }).eq('id', electionToToggle.id);
+    if (activateError) throw activateError;
   };
 
-  const addCandidate = async (candidate: Partial<Candidate>) => {
-      const { data, error } = await supabase.from('candidates').insert(mapCandidateToDb(candidate)).select().single();
+  const addCandidate = async (candidate: Partial<Candidate>): Promise<Candidate> => {
+      const dbPayload = mapCandidateToDb(candidate);
+      delete dbPayload.id;
+      const { data, error } = await supabase.from('candidates').insert(dbPayload).select().single();
       if (error) throw error;
-      setCandidates(prev => [...prev, mapCandidateFromDb(data)]);
+      return mapCandidateFromDb(data);
   };
 
   const updateCandidate = async (candidate: Candidate) => {
-      const { data, error } = await supabase.from('candidates').update(mapCandidateToDb(candidate)).eq('id', candidate.id).select().single();
+      const { error } = await supabase.from('candidates').update(mapCandidateToDb(candidate)).eq('id', candidate.id);
       if (error) throw error;
-      setCandidates(prev => prev.map(c => c.id === candidate.id ? mapCandidateFromDb(data) : c));
   };
 
   const deleteCandidate = async (id: string) => {
+      await supabase.from('votes').delete().eq('candidate_id', id);
       const { error } = await supabase.from('candidates').delete().eq('id', id);
       if (error) throw error;
-      setCandidates(prev => prev.filter(c => c.id !== id));
+  };
+  
+  const fetchCodesPage = async (page: number, searchTerm: string): Promise<{ codes: VoterCode[], count: number }> => {
+    const CODES_PER_PAGE = 100;
+    const from = (page - 1) * CODES_PER_PAGE;
+    const to = from + CODES_PER_PAGE - 1;
+
+    let query = supabase.from('voter_codes').select('code, is_used', { count: 'exact' });
+    if (searchTerm) {
+        query = query.ilike('code', `%${searchTerm}%`);
+    }
+    const { data, error, count } = await query.order('code').range(from, to);
+
+    if (error) throw error;
+    return { codes: data as VoterCode[], count: count || 0 };
   };
 
   const generateAndSaveCodes = async (count: number) => {
     const newCodes: { code: string }[] = [];
-    const existingCodes = new Set(voterCodes);
+    const { data: existingData } = await supabase.from('voter_codes').select('code');
+    const existingCodes = new Set(existingData?.map(c => c.code) || []);
+    
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     while (newCodes.length < count) {
         let code = '';
@@ -233,14 +294,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
     const { error } = await supabase.from('voter_codes').insert(newCodes);
     if (error) throw error;
-    setVoterCodes(Array.from(existingCodes));
+    await fetchCodeStats();
   };
 
   const clearAllCodes = async () => {
     const { error } = await supabase.from('voter_codes').delete().neq('code', 'IMPOSSIBLE_CODE_TO_MATCH');
     if (error) throw error;
-    setVoterCodes([]);
-    setUsedVoterCodes([]);
+    await fetchCodeStats();
   };
   
   const uploadCandidatePhoto = async (file: File): Promise<string> => {
@@ -267,13 +327,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const value = {
-    elections, candidates, voterCodes, usedVoterCodes, votes, isAdminAuthenticated,
+    elections, candidates, votes, isAdminAuthenticated,
     isVoterAuthenticated, currentVoterCode, currentView, setCurrentView,
     loginAdmin, logoutAdmin, loginVoter, logoutVoter, castVote,
-    theme, toggleTheme, toast, showToast, isLoading,
+    theme, toggleTheme, toast, showToast, isLoading, codeStats,
     addElection, updateElection, deleteElection, setActiveElection,
     addCandidate, updateCandidate, deleteCandidate,
-    generateAndSaveCodes, clearAllCodes, uploadCandidatePhoto,
+    generateAndSaveCodes, clearAllCodes, uploadCandidatePhoto, fetchCodesPage
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
