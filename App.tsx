@@ -20,6 +20,13 @@ const App: React.FC = () => {
     }
   }, [theme]);
 
+  useEffect(() => {
+    // On initial load, check for the admin hash to route to the admin login page
+    if (window.location.hash === '#admin') {
+      setCurrentView('adminLogin');
+    }
+  }, [setCurrentView]);
+
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900">
@@ -61,12 +68,6 @@ const App: React.FC = () => {
                   className="px-8 py-4 bg-blue-600 text-white font-bold rounded-full shadow-lg hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-300 dark:focus:ring-blue-800 transition-all transform hover:scale-105 duration-300"
                 >
                   Mulai Voting
-                </button>
-                <button
-                  onClick={() => setCurrentView('adminLogin')}
-                  className="px-8 py-4 bg-gray-700 text-white font-bold rounded-full shadow-lg hover:bg-gray-800 focus:outline-none focus:ring-4 focus:ring-gray-300 dark:focus:ring-gray-800 transition-all transform hover:scale-105 duration-300"
-                >
-                  Panel Admin
                 </button>
               </div>
             </div>

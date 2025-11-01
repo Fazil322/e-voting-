@@ -7,14 +7,17 @@ import { EditIcon } from '../icons/EditIcon';
 import Modal from '../shared/Modal';
 import EmptyState from '../shared/EmptyState';
 import { KeyIcon } from '../icons/KeyIcon';
-import { RefreshIcon } from '../icons/RefreshIcon';
+import { UserCircleIcon } from '../icons/UserCircleIcon';
 
 const CandidateManager: React.FC = () => {
-    const { elections, candidates, addCandidate, updateCandidate, deleteCandidate, showToast } = useAppContext();
+    const { elections, candidates, addCandidate, updateCandidate, deleteCandidate, showToast, uploadCandidatePhoto } = useAppContext();
     const [selectedElectionId, setSelectedElectionId] = useState<string>(elections.find(e => e.isActive)?.id || elections[0]?.id || '');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [currentCandidate, setCurrentCandidate] = useState<Partial<Candidate> | null>(null);
+    const [candidateToDelete, setCandidateToDelete] = useState<Candidate | null>(null);
+    const [photoFile, setPhotoFile] = useState<File | null>(null);
+    const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
     const filteredCandidates = useMemo(() => {
         if (!selectedElectionId) return [];
@@ -22,7 +25,10 @@ const CandidateManager: React.FC = () => {
     }, [candidates, selectedElectionId]);
 
     const openModal = (candidate: Partial<Candidate> | null = null) => {
-        setCurrentCandidate(candidate || { name: '', vision: '', mission: '', photoUrl: `https://picsum.photos/400/400?random=${Date.now()}` });
+        const initialCandidate = candidate || { name: '', vision: '', mission: '', photoUrl: '' };
+        setCurrentCandidate(initialCandidate);
+        setPhotoPreview(initialCandidate.photoUrl || null);
+        setPhotoFile(null);
         setIsModalOpen(true);
     };
 
@@ -30,6 +36,16 @@ const CandidateManager: React.FC = () => {
         if (isSaving) return;
         setIsModalOpen(false);
         setCurrentCandidate(null);
+        setPhotoFile(null);
+        setPhotoPreview(null);
+    };
+
+    const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            setPhotoFile(file);
+            setPhotoPreview(URL.createObjectURL(file));
+        }
     };
 
     const handleSave = async () => {
@@ -37,14 +53,26 @@ const CandidateManager: React.FC = () => {
             showToast('Nama kandidat tidak boleh kosong.', 'error');
             return;
         }
+        if (!photoFile && !currentCandidate.photoUrl) {
+            showToast('Foto kandidat tidak boleh kosong.', 'error');
+            return;
+        }
+
         setIsSaving(true);
         try {
-            if (currentCandidate.id) {
-                await updateCandidate(currentCandidate as Candidate);
+            let finalPhotoUrl = currentCandidate.photoUrl || '';
+            if (photoFile) {
+                finalPhotoUrl = await uploadCandidatePhoto(photoFile);
+            }
+            
+            const candidateData = { ...currentCandidate, photoUrl: finalPhotoUrl };
+
+            if (candidateData.id) {
+                await updateCandidate(candidateData as Candidate);
                 showToast('Kandidat berhasil diperbarui.', 'success');
             } else {
                 const newCandidate = {
-                    ...currentCandidate,
+                    ...candidateData,
                     id: `candidate-${Date.now()}`,
                     electionId: selectedElectionId,
                 } as Candidate;
@@ -60,24 +88,17 @@ const CandidateManager: React.FC = () => {
         }
     };
     
-    const handleDelete = async (id: string) => {
-        if (window.confirm('Apakah Anda yakin ingin menghapus kandidat ini?')) {
+    const confirmDelete = async () => {
+        if (candidateToDelete) {
             try {
-                await deleteCandidate(id);
+                await deleteCandidate(candidateToDelete.id);
                 showToast('Kandidat telah dihapus.', 'info');
             } catch (error) {
                 console.error(error);
                 showToast('Gagal menghapus kandidat.', 'error');
+            } finally {
+                setCandidateToDelete(null);
             }
-        }
-    };
-
-    const generateRandomPhoto = () => {
-        if (currentCandidate) {
-            setCurrentCandidate({
-                ...currentCandidate,
-                photoUrl: `https://picsum.photos/400/400?random=${Date.now()}`
-            });
         }
     };
 
@@ -121,7 +142,7 @@ const CandidateManager: React.FC = () => {
                                     <td className="px-6 py-4 font-medium text-gray-900 dark:text-white whitespace-nowrap">{candidate.name}</td>
                                     <td className="px-6 py-4 text-right flex justify-end gap-2">
                                         <button onClick={() => openModal(candidate)} className="p-2 text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 rounded-full hover:bg-blue-100 dark:hover:bg-gray-700 transition-colors"><EditIcon className="w-5 h-5"/></button>
-                                        <button onClick={() => handleDelete(candidate.id)} className="p-2 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 rounded-full hover:bg-red-100 dark:hover:bg-gray-700 transition-colors"><TrashIcon className="w-5 h-5"/></button>
+                                        <button onClick={() => setCandidateToDelete(candidate)} className="p-2 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 rounded-full hover:bg-red-100 dark:hover:bg-gray-700 transition-colors"><TrashIcon className="w-5 h-5"/></button>
                                     </td>
                                 </tr>
                             ))}
@@ -133,13 +154,23 @@ const CandidateManager: React.FC = () => {
             {isModalOpen && currentCandidate && (
                 <Modal title={currentCandidate.id ? 'Edit Kandidat' : 'Tambah Kandidat'} onClose={closeModal}>
                     <div className="space-y-4">
-                        <input type="text" placeholder="Nama Kandidat" value={currentCandidate.name || ''} onChange={e => setCurrentCandidate({ ...currentCandidate, name: e.target.value })} className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600" />
-                        <div className="flex items-center gap-2">
-                           <input type="text" placeholder="URL Foto" value={currentCandidate.photoUrl || ''} onChange={e => setCurrentCandidate({ ...currentCandidate, photoUrl: e.target.value })} className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600" />
-                           <button onClick={generateRandomPhoto} className="p-2 bg-gray-200 dark:bg-gray-600 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500" title="Generate foto acak">
-                                <RefreshIcon className="w-5 h-5" />
-                           </button>
+                        <div className="flex flex-col items-center gap-4">
+                            {photoPreview ? (
+                                <img src={photoPreview} alt="Preview" className="w-32 h-32 rounded-full object-cover shadow-md"/>
+                            ) : (
+                                <div className="w-32 h-32 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
+                                    <UserCircleIcon className="w-20 h-20 text-gray-400 dark:text-gray-500" />
+                                </div>
+                            )}
+                             <input 
+                                type="file" 
+                                id="photo-upload"
+                                accept="image/png, image/jpeg, image/webp" 
+                                onChange={handlePhotoChange}
+                                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-blue-900/50 dark:file:text-blue-300 dark:hover:file:bg-blue-800/50 cursor-pointer"
+                            />
                         </div>
+                        <input type="text" placeholder="Nama Kandidat" value={currentCandidate.name || ''} onChange={e => setCurrentCandidate({ ...currentCandidate, name: e.target.value })} className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600" />
                         <textarea placeholder="Visi" value={currentCandidate.vision || ''} onChange={e => setCurrentCandidate({ ...currentCandidate, vision: e.target.value })} className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600" />
                         <textarea placeholder="Misi (Gunakan baris baru untuk setiap poin)" value={currentCandidate.mission || ''} onChange={e => setCurrentCandidate({ ...currentCandidate, mission: e.target.value })} className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 h-24" />
 
@@ -148,6 +179,20 @@ const CandidateManager: React.FC = () => {
                             <button onClick={handleSave} disabled={isSaving} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-400 disabled:cursor-wait">
                                 {isSaving ? 'Menyimpan...' : 'Simpan'}
                             </button>
+                        </div>
+                    </div>
+                </Modal>
+            )}
+
+            {candidateToDelete && (
+                 <Modal title="Konfirmasi Hapus" onClose={() => setCandidateToDelete(null)}>
+                    <div>
+                        <p>Apakah Anda yakin ingin menghapus kandidat
+                            <span className="font-bold"> "{candidateToDelete.name}"</span>?
+                        </p>
+                        <div className="mt-6 flex justify-end gap-4">
+                            <button onClick={() => setCandidateToDelete(null)} className="px-4 py-2 bg-gray-300 dark:bg-gray-600 rounded-md hover:bg-gray-400">Batal</button>
+                            <button onClick={confirmDelete} className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">Ya, Hapus</button>
                         </div>
                     </div>
                 </Modal>

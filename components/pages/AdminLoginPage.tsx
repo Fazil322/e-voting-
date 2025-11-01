@@ -58,7 +58,12 @@ const AdminLoginPage: React.FC = () => {
           </div>
         </form>
          <div className="text-center">
-            <button onClick={() => setCurrentView('home')} className="font-medium text-sm text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300">
+            <button 
+                onClick={() => {
+                    window.location.hash = '';
+                    setCurrentView('home');
+                }} 
+                className="font-medium text-sm text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300">
                 Kembali ke Halaman Utama
             </button>
         </div>

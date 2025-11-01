@@ -39,6 +39,7 @@ interface AppContextType {
   deleteCandidate: (id: string) => Promise<void>;
   generateAndSaveCodes: (count: number) => Promise<void>;
   clearAllCodes: () => Promise<void>;
+  uploadCandidatePhoto: (file: File) => Promise<string>;
 }
 
 export const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -99,6 +100,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
     };
     fetchData();
+
+    const channel = supabase
+      .channel('realtime-votes')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'votes' }, (payload) => {
+        const newVote = mapVoteFromDb(payload.new);
+        setVotes(prev => prev.some(v => v.id === newVote.id) ? prev : [...prev, newVote]);
+        setUsedVoterCodes(prev => prev.includes(newVote.voterCode) ? prev : [...prev, newVote.voterCode]);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const toggleTheme = () => setTheme(prevTheme => prevTheme === 'light' ? 'dark' : 'light');
@@ -115,6 +129,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   
   const logoutAdmin = () => {
     setIsAdminAuthenticated(false);
+    window.location.hash = '';
     setCurrentView('home');
     showToast('Anda telah logout dari panel admin.', 'info');
   };
@@ -148,7 +163,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         showToast('Gagal memvalidasi suara Anda. Coba lagi.', 'error'); return;
     }
 
-    const { data: insertedVote, error: insertError } = await supabase.from('votes').insert({ 
+    const { error: insertError } = await supabase.from('votes').insert({ 
       election_id: electionId, candidate_id: candidateId, voter_code: currentVoterCode, timestamp: new Date().toISOString() 
     }).select().single();
 
@@ -158,8 +173,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return;
     }
 
-    setVotes(prev => [...prev, mapVoteFromDb(insertedVote)]);
-    setUsedVoterCodes(prev => [...prev, currentVoterCode]);
+    // No need for client-side state update here, realtime subscription will handle it.
   };
 
   const addElection = async (election: Partial<Election>) => {
@@ -181,12 +195,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const setActiveElection = async (electionToToggle: Election) => {
-    const { error: batchError } = await supabase.from('elections').update({ is_active: false }).neq('id', electionToToggle.id);
-    if (batchError) throw batchError;
-
-    const { error: singleError } = await supabase.from('elections').update({ is_active: true }).eq('id', electionToToggle.id);
-    if (singleError) throw singleError;
-
+    await supabase.from('elections').update({ is_active: false }).neq('id', electionToToggle.id);
+    await supabase.from('elections').update({ is_active: true }).eq('id', electionToToggle.id);
     setElections(prev => prev.map(e => ({...e, isActive: e.id === electionToToggle.id })));
   };
 
@@ -231,6 +241,29 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setVoterCodes([]);
     setUsedVoterCodes([]);
   };
+  
+  const uploadCandidatePhoto = async (file: File): Promise<string> => {
+    const fileName = `photo_${Date.now()}_${file.name.replace(/\s/g, '_')}`;
+    const bucket = 'evoting_assets';
+    const filePath = `public/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+        .from(bucket)
+        .upload(filePath, file, { upsert: true });
+
+    if (uploadError) {
+        console.error('Error uploading file:', uploadError);
+        throw uploadError;
+    }
+
+    const { data } = supabase.storage.from(bucket).getPublicUrl(filePath);
+    
+    if (!data.publicUrl) {
+        throw new Error("Could not get public URL for uploaded file.");
+    }
+    
+    return data.publicUrl;
+  };
 
   const value = {
     elections, candidates, voterCodes, usedVoterCodes, votes, isAdminAuthenticated,
@@ -239,7 +272,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     theme, toggleTheme, toast, showToast, isLoading,
     addElection, updateElection, deleteElection, setActiveElection,
     addCandidate, updateCandidate, deleteCandidate,
-    generateAndSaveCodes, clearAllCodes,
+    generateAndSaveCodes, clearAllCodes, uploadCandidatePhoto,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

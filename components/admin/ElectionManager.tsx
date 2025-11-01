@@ -13,6 +13,7 @@ const ElectionManager: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [currentElection, setCurrentElection] = useState<Partial<Election> | null>(null);
+    const [electionToDelete, setElectionToDelete] = useState<Election | null>(null);
 
     const openModal = (election: Partial<Election> | null = null) => {
         setCurrentElection(election || { title: '', description: '', startDate: '', endDate: '', isActive: false });
@@ -55,14 +56,16 @@ const ElectionManager: React.FC = () => {
         }
     };
     
-    const handleDelete = async (id: string) => {
-        if (window.confirm('Apakah Anda yakin ingin menghapus pemilihan ini? Aksi ini tidak dapat dibatalkan.')) {
+    const confirmDelete = async () => {
+        if (electionToDelete) {
             try {
-                await deleteElection(id);
+                await deleteElection(electionToDelete.id);
                 showToast('Pemilihan telah dihapus.', 'info');
             } catch (error) {
                 console.error(error);
                 showToast('Gagal menghapus pemilihan.', 'error');
+            } finally {
+                setElectionToDelete(null);
             }
         }
     };
@@ -115,7 +118,7 @@ const ElectionManager: React.FC = () => {
                                     </td>
                                     <td className="px-6 py-4 text-right flex justify-end gap-2">
                                         <button onClick={() => openModal(election)} className="p-2 text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 rounded-full hover:bg-blue-100 dark:hover:bg-gray-700 transition-colors"><EditIcon className="w-5 h-5"/></button>
-                                        <button onClick={() => handleDelete(election.id)} className="p-2 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 rounded-full hover:bg-red-100 dark:hover:bg-gray-700 transition-colors"><TrashIcon className="w-5 h-5"/></button>
+                                        <button onClick={() => setElectionToDelete(election)} className="p-2 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 rounded-full hover:bg-red-100 dark:hover:bg-gray-700 transition-colors"><TrashIcon className="w-5 h-5"/></button>
                                     </td>
                                 </tr>
                             ))}
@@ -142,6 +145,21 @@ const ElectionManager: React.FC = () => {
                             <button onClick={handleSave} disabled={isSaving} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-400 disabled:cursor-wait">
                                 {isSaving ? 'Menyimpan...' : 'Simpan'}
                             </button>
+                        </div>
+                    </div>
+                </Modal>
+            )}
+
+            {electionToDelete && (
+                <Modal title="Konfirmasi Hapus" onClose={() => setElectionToDelete(null)}>
+                    <div>
+                        <p>Apakah Anda yakin ingin menghapus pemilihan
+                            <span className="font-bold"> "{electionToDelete.title}"</span>?
+                            Aksi ini tidak dapat dibatalkan.
+                        </p>
+                        <div className="mt-6 flex justify-end gap-4">
+                            <button onClick={() => setElectionToDelete(null)} className="px-4 py-2 bg-gray-300 dark:bg-gray-600 rounded-md hover:bg-gray-400">Batal</button>
+                            <button onClick={confirmDelete} className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">Ya, Hapus</button>
                         </div>
                     </div>
                 </Modal>
