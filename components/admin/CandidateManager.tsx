@@ -10,14 +10,12 @@ import { KeyIcon } from '../icons/KeyIcon';
 import { UserCircleIcon } from '../icons/UserCircleIcon';
 
 const CandidateManager: React.FC = () => {
-    const { elections, candidates, addCandidate, updateCandidate, deleteCandidate, showToast, uploadCandidatePhoto } = useAppContext();
+    const { elections, candidates, addCandidate, updateCandidate, deleteCandidate, showToast } = useAppContext();
     const [selectedElectionId, setSelectedElectionId] = useState<string>(elections.find(e => e.isActive)?.id || elections[0]?.id || '');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [currentCandidate, setCurrentCandidate] = useState<Partial<Candidate> | null>(null);
     const [candidateToDelete, setCandidateToDelete] = useState<Candidate | null>(null);
-    const [photoFile, setPhotoFile] = useState<File | null>(null);
-    const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
     const filteredCandidates = useMemo(() => {
         if (!selectedElectionId) return [];
@@ -25,10 +23,7 @@ const CandidateManager: React.FC = () => {
     }, [candidates, selectedElectionId]);
 
     const openModal = (candidate: Partial<Candidate> | null = null) => {
-        const initialCandidate = candidate || { name: '', vision: '', mission: '', photoUrl: '' };
-        setCurrentCandidate(initialCandidate);
-        setPhotoPreview(initialCandidate.photoUrl || null);
-        setPhotoFile(null);
+        setCurrentCandidate(candidate || { name: '', vision: '', mission: '', photoUrl: '' });
         setIsModalOpen(true);
     };
 
@@ -36,16 +31,6 @@ const CandidateManager: React.FC = () => {
         if (isSaving) return;
         setIsModalOpen(false);
         setCurrentCandidate(null);
-        setPhotoFile(null);
-        setPhotoPreview(null);
-    };
-
-    const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            const file = e.target.files[0];
-            setPhotoFile(file);
-            setPhotoPreview(URL.createObjectURL(file));
-        }
     };
 
     const handleSave = async () => {
@@ -53,21 +38,15 @@ const CandidateManager: React.FC = () => {
             showToast('Nama kandidat dan pemilihan harus diisi.', 'error');
             return;
         }
-        if (!photoFile && !currentCandidate.photoUrl) {
-            showToast('Foto kandidat tidak boleh kosong.', 'error');
+        if (!currentCandidate.photoUrl) {
+            showToast('URL Foto kandidat tidak boleh kosong.', 'error');
             return;
         }
 
         setIsSaving(true);
         try {
-            let finalPhotoUrl = currentCandidate.photoUrl || '';
-            if (photoFile) {
-                finalPhotoUrl = await uploadCandidatePhoto(photoFile);
-            }
-            
             if (currentCandidate.id) {
-                const candidateData = { ...currentCandidate, photoUrl: finalPhotoUrl };
-                await updateCandidate(candidateData as Candidate);
+                await updateCandidate(currentCandidate as Candidate);
                 showToast('Kandidat berhasil diperbarui.', 'success');
             } else {
                 const newCandidate: Partial<Candidate> = {
@@ -75,7 +54,7 @@ const CandidateManager: React.FC = () => {
                     name: currentCandidate.name || '',
                     vision: currentCandidate.vision || '',
                     mission: currentCandidate.mission || '',
-                    photoUrl: finalPhotoUrl,
+                    photoUrl: currentCandidate.photoUrl || '',
                 };
                 await addCandidate(newCandidate);
                 showToast('Kandidat berhasil ditambahkan.', 'success');
@@ -156,20 +135,14 @@ const CandidateManager: React.FC = () => {
                 <Modal title={currentCandidate.id ? 'Edit Kandidat' : 'Tambah Kandidat'} onClose={closeModal}>
                     <div className="space-y-4">
                         <div className="flex flex-col items-center gap-4">
-                            {photoPreview ? (
-                                <img src={photoPreview} alt="Preview" className="w-32 h-32 rounded-full object-cover shadow-md"/>
+                             {currentCandidate.photoUrl ? (
+                                <img src={currentCandidate.photoUrl} alt="Preview" className="w-32 h-32 rounded-full object-cover shadow-md bg-gray-200 dark:bg-gray-700"/>
                             ) : (
                                 <div className="w-32 h-32 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
                                     <UserCircleIcon className="w-20 h-20 text-gray-400 dark:text-gray-500" />
                                 </div>
                             )}
-                             <input 
-                                type="file" 
-                                id="photo-upload"
-                                accept="image/png, image/jpeg, image/webp" 
-                                onChange={handlePhotoChange}
-                                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-blue-900/50 dark:file:text-blue-300 dark:hover:file:bg-blue-800/50 cursor-pointer"
-                            />
+                            <input type="text" placeholder="URL Foto Kandidat" value={currentCandidate.photoUrl || ''} onChange={e => setCurrentCandidate({ ...currentCandidate, photoUrl: e.target.value })} className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600" />
                         </div>
                         <input type="text" placeholder="Nama Kandidat" value={currentCandidate.name || ''} onChange={e => setCurrentCandidate({ ...currentCandidate, name: e.target.value })} className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600" />
                         <textarea placeholder="Visi" value={currentCandidate.vision || ''} onChange={e => setCurrentCandidate({ ...currentCandidate, vision: e.target.value })} className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600" />
@@ -178,7 +151,7 @@ const CandidateManager: React.FC = () => {
                         <div className="flex justify-end gap-2 pt-4">
                             <button onClick={closeModal} disabled={isSaving} className="px-4 py-2 bg-gray-200 dark:bg-gray-600 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors disabled:opacity-50">Batal</button>
                             <button onClick={handleSave} disabled={isSaving} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-400 disabled:cursor-wait">
-                                {isSaving ? (photoFile ? 'Mengunggah foto...' : 'Menyimpan...') : 'Simpan'}
+                                {isSaving ? 'Menyimpan...' : 'Simpan'}
                             </button>
                         </div>
                     </div>

@@ -43,7 +43,6 @@ interface AppContextType {
   deleteCandidate: (id: string) => Promise<void>;
   generateAndSaveCodes: (count: number) => Promise<void>;
   clearAllCodes: () => Promise<void>;
-  uploadCandidatePhoto: (file: File) => Promise<string>;
   fetchCodesPage: (page: number, searchTerm: string) => Promise<{ codes: VoterCode[], count: number }>;
 }
 
@@ -123,17 +122,31 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       
     const electionsChannel = supabase
       .channel('realtime-elections')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'elections' }, async () => {
-          const { data, error } = await supabase.from('elections').select('*');
-          if (!error) setElections(data.map(mapElectionFromDb));
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'elections' }, (payload) => {
+        if (payload.eventType === 'INSERT') {
+            const newElection = mapElectionFromDb(payload.new);
+            setElections(prev => prev.some(e => e.id === newElection.id) ? prev : [...prev, newElection]);
+        } else if (payload.eventType === 'UPDATE') {
+            const updatedElection = mapElectionFromDb(payload.new);
+            setElections(prev => prev.map(e => e.id === updatedElection.id ? updatedElection : e));
+        } else if (payload.eventType === 'DELETE') {
+            setElections(prev => prev.filter(e => e.id !== payload.old.id));
+        }
       })
       .subscribe();
 
     const candidatesChannel = supabase
       .channel('realtime-candidates')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'candidates' }, async () => {
-          const { data, error } = await supabase.from('candidates').select('*');
-          if (!error) setCandidates(data.map(mapCandidateFromDb));
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'candidates' }, (payload) => {
+         if (payload.eventType === 'INSERT') {
+            const newCandidate = mapCandidateFromDb(payload.new);
+            setCandidates(prev => prev.some(c => c.id === newCandidate.id) ? prev : [...prev, newCandidate]);
+        } else if (payload.eventType === 'UPDATE') {
+            const updatedCandidate = mapCandidateFromDb(payload.new);
+            setCandidates(prev => prev.map(c => c.id === updatedCandidate.id ? updatedCandidate : c));
+        } else if (payload.eventType === 'DELETE') {
+            setCandidates(prev => prev.filter(c => c.id !== payload.old.id));
+        }
       })
       .subscribe();
 
@@ -199,7 +212,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     if (insertError) {
         showToast('Gagal menyimpan suara Anda. Hubungi admin.', 'error');
-        // Revert voter code status if vote insertion fails
         await supabase.from('voter_codes').update({ is_used: false }).eq('code', currentVoterCode);
         return;
     }
@@ -212,36 +224,33 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     delete dbPayload.id;
     const { data, error } = await supabase.from('elections').insert(dbPayload).select().single();
     if (error) throw error;
-    return mapElectionFromDb(data);
+    const newElection = mapElectionFromDb(data);
+    setElections(prev => [...prev, newElection]);
+    return newElection;
   };
 
   const updateElection = async (election: Election) => {
     const { error } = await supabase.from('elections').update(mapElectionToDb(election)).eq('id', election.id);
     if (error) throw error;
+    setElections(prev => prev.map(e => e.id === election.id ? election : e));
   };
   
   const deleteElection = async (id: string) => {
-    // Supabase REST doesn't support cascade deletes, so we do it manually.
-    // In a real project, this should be an RPC function (Edge Function) for atomicity.
     await supabase.from('votes').delete().eq('election_id', id);
     await supabase.from('candidates').delete().eq('election_id', id);
     const { error } = await supabase.from('elections').delete().eq('id', id);
     if (error) throw error;
+    setElections(prev => prev.filter(e => e.id !== id));
+    setCandidates(prev => prev.filter(c => c.electionId !== id));
+    setVotes(prev => prev.filter(v => v.electionId !== id));
   };
 
   const setActiveElection = async (electionToToggle: Election) => {
-    const { error: batchError } = await supabase.rpc('set_active_election', {
-      election_id_to_set: electionToToggle.id
-    });
-    // This requires a stored procedure in Supabase. A simpler client-side alternative:
-    // await supabase.from('elections').update({ is_active: false }).neq('id', electionToToggle.id);
-    // await supabase.from('elections').update({ is_active: true }).eq('id', electionToToggle.id);
-    // For simplicity and to avoid requiring DB changes, we'll do two queries.
-    
     const { error: deactivateError } = await supabase.from('elections').update({ is_active: false }).neq('id', electionToToggle.id);
     if (deactivateError) throw deactivateError;
     const { error: activateError } = await supabase.from('elections').update({ is_active: true }).eq('id', electionToToggle.id);
     if (activateError) throw activateError;
+    setElections(prev => prev.map(e => ({ ...e, isActive: e.id === electionToToggle.id })));
   };
 
   const addCandidate = async (candidate: Partial<Candidate>): Promise<Candidate> => {
@@ -249,18 +258,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       delete dbPayload.id;
       const { data, error } = await supabase.from('candidates').insert(dbPayload).select().single();
       if (error) throw error;
-      return mapCandidateFromDb(data);
+      const newCandidate = mapCandidateFromDb(data);
+      setCandidates(prev => [...prev, newCandidate]);
+      return newCandidate;
   };
 
   const updateCandidate = async (candidate: Candidate) => {
       const { error } = await supabase.from('candidates').update(mapCandidateToDb(candidate)).eq('id', candidate.id);
       if (error) throw error;
+      setCandidates(prev => prev.map(c => c.id === candidate.id ? candidate : c));
   };
 
   const deleteCandidate = async (id: string) => {
       await supabase.from('votes').delete().eq('candidate_id', id);
       const { error } = await supabase.from('candidates').delete().eq('id', id);
       if (error) throw error;
+      setCandidates(prev => prev.filter(c => c.id !== id));
   };
   
   const fetchCodesPage = async (page: number, searchTerm: string): Promise<{ codes: VoterCode[], count: number }> => {
@@ -303,29 +316,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     await fetchCodeStats();
   };
   
-  const uploadCandidatePhoto = async (file: File): Promise<string> => {
-    const fileName = `photo_${Date.now()}_${file.name.replace(/\s/g, '_')}`;
-    const bucket = 'evoting_assets';
-    const filePath = `public/${fileName}`;
-
-    const { error: uploadError } = await supabase.storage
-        .from(bucket)
-        .upload(filePath, file, { upsert: true });
-
-    if (uploadError) {
-        console.error('Error uploading file:', uploadError);
-        throw uploadError;
-    }
-
-    const { data } = supabase.storage.from(bucket).getPublicUrl(filePath);
-    
-    if (!data.publicUrl) {
-        throw new Error("Could not get public URL for uploaded file.");
-    }
-    
-    return data.publicUrl;
-  };
-
   const value = {
     elections, candidates, votes, isAdminAuthenticated,
     isVoterAuthenticated, currentVoterCode, currentView, setCurrentView,
@@ -333,7 +323,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     theme, toggleTheme, toast, showToast, isLoading, codeStats,
     addElection, updateElection, deleteElection, setActiveElection,
     addCandidate, updateCandidate, deleteCandidate,
-    generateAndSaveCodes, clearAllCodes, uploadCandidatePhoto, fetchCodesPage
+    generateAndSaveCodes, clearAllCodes, fetchCodesPage
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
