@@ -7,7 +7,6 @@ const VotingPage: React.FC = () => {
   const { elections, candidates, castVote, logoutVoter } = useAppContext();
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [showThanksModal, setShowThanksModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const activeElection = useMemo(() => elections.find(e => e.isActive), [elections]);
@@ -36,16 +35,11 @@ const VotingPage: React.FC = () => {
     if (selectedCandidateId && activeElection) {
       setIsSubmitting(true);
       await castVote(activeElection.id, selectedCandidateId);
+      // The context will handle view change to 'votingFinished'
       setIsSubmitting(false);
       setShowConfirmModal(false);
-      setShowThanksModal(true);
     }
   };
-
-  const closeThanksModalAndLogout = () => {
-      setShowThanksModal(false);
-      logoutVoter();
-  }
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -87,18 +81,6 @@ const VotingPage: React.FC = () => {
                 {isSubmitting ? 'Mengirim...' : 'Ya, Saya Yakin'}
             </button>
           </div>
-        </Modal>
-      )}
-
-      {showThanksModal && (
-         <Modal
-            title="Terima Kasih!"
-            onClose={closeThanksModalAndLogout}
-        >
-            <p>Terima kasih telah berpartisipasi dalam pemilihan. Suara Anda telah berhasil direkam.</p>
-            <div className="mt-6 flex justify-end">
-                <button onClick={closeThanksModalAndLogout} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Tutup</button>
-            </div>
         </Modal>
       )}
     </div>

@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { Candidate } from '../../types';
+import { CheckIcon } from '../icons/CheckIcon';
 
 interface CandidateCardProps {
   candidate: Candidate;
@@ -28,8 +29,13 @@ const CandidateCard: React.FC<CandidateCardProps> = ({ candidate, isSelected, on
             <p className="text-gray-600 dark:text-gray-400 text-sm whitespace-pre-line">{candidate.mission}</p>
         </div>
       </div>
-       <div className={`py-3 text-center font-bold text-white transition-colors duration-300 ${isSelected ? 'bg-blue-600' : 'bg-gray-500'}`}>
-            {isSelected ? 'Terpilih' : 'Pilih Saya'}
+       <div className={`py-3 text-center font-bold text-white transition-colors duration-300 flex items-center justify-center gap-2 ${isSelected ? 'bg-blue-600' : 'bg-gray-500'}`}>
+            {isSelected ? (
+                <>
+                    <CheckIcon className="w-5 h-5"/>
+                    <span>Terpilih</span>
+                </>
+            ) : 'Pilih Saya'}
         </div>
     </div>
   );

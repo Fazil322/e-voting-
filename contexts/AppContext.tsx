@@ -18,8 +18,8 @@ interface AppContextType {
   isAdminAuthenticated: boolean;
   isVoterAuthenticated: boolean;
   currentVoterCode: string | null;
-  currentView: 'home' | 'voterLogin' | 'adminLogin';
-  setCurrentView: React.Dispatch<React.SetStateAction<'home' | 'voterLogin' | 'adminLogin'>>;
+  currentView: 'home' | 'voterLogin' | 'adminLogin' | 'votingFinished';
+  setCurrentView: React.Dispatch<React.SetStateAction<'home' | 'voterLogin' | 'adminLogin' | 'votingFinished'>>;
   loginAdmin: (code: string) => boolean;
   logoutAdmin: () => void;
   loginVoter: (code: string) => Promise<boolean>;
@@ -54,7 +54,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(false);
   const [isVoterAuthenticated, setIsVoterAuthenticated] = useState<boolean>(false);
   const [currentVoterCode, setCurrentVoterCode] = useState<string | null>(null);
-  const [currentView, setCurrentView] = useState<'home' | 'voterLogin' | 'adminLogin'>('home');
+  const [currentView, setCurrentView] = useState<'home' | 'voterLogin' | 'adminLogin' | 'votingFinished'>('home');
   const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem('theme') as Theme) || 'light');
   const [toast, setToast] = useState<Toast | null>(null);
 
@@ -172,7 +172,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         await supabase.from('voter_codes').update({ is_used: false }).eq('code', currentVoterCode); // Revert
         return;
     }
-
+    
+    setCurrentView('votingFinished');
     // No need for client-side state update here, realtime subscription will handle it.
   };
 
