@@ -50,7 +50,7 @@ const CandidateManager: React.FC = () => {
 
     const handleSave = async () => {
         if (!currentCandidate || !currentCandidate.name || !selectedElectionId) {
-            showToast('Nama kandidat tidak boleh kosong.', 'error');
+            showToast('Nama kandidat dan pemilihan harus diisi.', 'error');
             return;
         }
         if (!photoFile && !currentCandidate.photoUrl) {
@@ -65,17 +65,19 @@ const CandidateManager: React.FC = () => {
                 finalPhotoUrl = await uploadCandidatePhoto(photoFile);
             }
             
-            const candidateData = { ...currentCandidate, photoUrl: finalPhotoUrl };
-
-            if (candidateData.id) {
+            if (currentCandidate.id) {
+                const candidateData = { ...currentCandidate, photoUrl: finalPhotoUrl };
                 await updateCandidate(candidateData as Candidate);
                 showToast('Kandidat berhasil diperbarui.', 'success');
             } else {
-                const newCandidate = {
-                    ...candidateData,
+                const newCandidate: Candidate = {
                     id: `candidate-${Date.now()}`,
                     electionId: selectedElectionId,
-                } as Candidate;
+                    name: currentCandidate.name || '',
+                    vision: currentCandidate.vision || '',
+                    mission: currentCandidate.mission || '',
+                    photoUrl: finalPhotoUrl,
+                };
                 await addCandidate(newCandidate);
                 showToast('Kandidat berhasil ditambahkan.', 'success');
             }
